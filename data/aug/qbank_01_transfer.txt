@@ -1,0 +1,240 @@
+Q: When you freeze all convolutional layers of a pretrained network and train only a newly attached classifier head, the pretrained network is acting as
+A) A fixed feature extractor whose learned representations are reused unchanged, with only the task-specific mapping being learned
+B) A regulariser that adds noise to the input images during every forward pass
+C) A model that cannot produce useful features unless its weights continue to receive gradient updates
+D) An ensemble of independently initialised networks whose predictions are averaged
+E) A data augmentation pipeline that synthesises additional training images
+*: A
+
+Q: In LoRA, increasing the rank r from 4 to 64 primarily
+A) Reduces the memory needed to store the adapter, because higher ranks compress better
+B) Removes the need to keep the frozen base weights in memory at all
+C) Converts the adapter into a structured pruning mask over the base weights
+D) Increases adapter capacity and trainable parameters, which can help on harder tasks but raises overfitting risk on small datasets
+E) Guarantees a strictly better downstream score on every task regardless of dataset size, and the effect is entirely independent of the objective being optimised
+*: D
+
+Q: A practical advantage of keeping LoRA adapters separate rather than merging them into the base weights is that
+A) The separate adapter runs with strictly lower inference latency than merged weights, a relationship that is exact rather than approximate under all conditions
+B) Multiple task-specific adapters can be swapped over one shared base model at serving time
+C) The base model no longer needs to be loaded into memory during inference
+D) Separate adapters remove the need to store the optimiser state during training
+E) Only unmerged adapters can be trained with gradient descent at all
+*: B
+
+Q: After merging a LoRA adapter into the base weights, inference latency compared with the unmerged form is
+A) Substantially higher, because merging introduces an extra matrix multiplication per layer, and this remains true whether the model is trained from scratch or fine-tuned
+B) Undefined, because merged models cannot be run without the original adapter files
+C) Slightly lower, since the extra low-rank branch no longer has to be computed separately at each layer
+D) Exactly doubled, since the merged matrix stores two copies of every weight
+E) Reduced to zero, because merged models skip the forward pass entirely
+*: C
+
+Q: QLoRA's 'double quantization' saves additional memory by
+A) Running the entire forward pass twice and averaging the two results, which cannot be reproduced by any other method currently available
+B) Quantising the quantization constants themselves, since storing one scale per small block is itself a nontrivial overhead
+C) Applying quantization to the gradients rather than to any of the weights, regardless of the precision in which the weights and activations are stored
+D) Storing two independent copies of the model at different bit widths for redundancy, and this is required for the computation to remain numerically well defined
+E) Quantising the input text twice before it reaches the embedding layer, and the benefit scales linearly without any diminishing returns at all
+*: B
+
+Q: BitFit fine-tunes a pretrained model by updating
+A) Every parameter in the network, but with a much smaller learning rate than usual
+B) Only the embedding table, leaving all transformer blocks frozen
+C) Only the bias terms, leaving all weight matrices frozen, which holds for every input the model will ever be asked to process
+D) A randomly chosen 1% of weights, resampled at each training step
+E) Only the final classification layer, which is mathematically identical to linear probing
+*: C
+
+Q: BitFit sometimes matches full fine-tuning on very small datasets mainly because
+A) Bias terms carry more information than weight matrices in any transformer
+B) Restricting the update to a tiny parameter subset acts as a strong regulariser when there is too little data to fit more
+C) Freezing the weights makes the optimiser converge to the global optimum
+D) Small datasets are always linearly separable in the pretrained feature space
+E) The bias terms are the only parameters that receive nonzero gradients in a frozen network, and no calibration or validation step is needed to confirm it
+*: B
+
+Q: Compared with discrete prompt engineering, soft prompt tuning differs in that the prompt
+A) Is optimised by gradient descent in continuous embedding space rather than being written as text
+B) Must be shorter than eight tokens to remain trainable
+C) Is applied only at inference time and never during training
+D) Replaces the model's attention mechanism with a lookup table
+E) Can only be used with encoder-only architectures such as BERT, an outcome that is entirely determined by the architecture rather than the data
+*: A
+
+Q: An encoder that scores higher under linear probing but lower after full fine-tuning than a rival encoder suggests that
+A) The two encoders were trained on the same data with identical objectives
+B) Linear probing is an invalid protocol and its results should be discarded
+C) The rival encoder has strictly fewer parameters in every layer
+D) Its features are more linearly separable as-is, while the rival's are less linear but adapt better once all weights can move
+E) Full fine-tuning was run with a learning rate that was too small to change anything, and the same conclusion follows for both training and inference
+*: D
+
+Q: 'Gradual unfreezing' fine-tunes a pretrained model by
+A) Unfreezing layers progressively, typically from the top down, so lower general-purpose features are disturbed last
+B) Slowly raising the batch size until the GPU runs out of memory, which is guaranteed by construction and never needs to be verified empirically
+C) Unfreezing a random subset of parameters at every optimisation step, and this makes any further optimisation of that component unnecessary
+D) Training with frozen weights first and then reinitialising the entire network, regardless of how many devices the workload is ultimately distributed across
+E) Reducing the precision of frozen layers from FP32 down to INT8 over the course of training, and the relationship is strictly monotonic across the entire operating range
+*: A
+
+Q: Following warmup with cosine decay to zero over the remaining steps typically
+A) Keeps the learning rate constant after warmup so the model can memorise the data
+B) Restarts training from the initial checkpoint whenever the rate reaches its minimum
+C) Anneals the step size smoothly so the model settles into a good region rather than bouncing around late in training
+D) Guarantees a lower training loss than any constant-rate schedule
+E) Increases the learning rate near the end to escape the final minimum
+*: C
+
+Q: 'Negative transfer' in multi-task fine-tuning describes the situation where
+A) The loss function returns negative values because of a sign error
+B) Gradients from one task point in the opposite direction to another's, so joint training hurts performance versus training separately
+C) The model transfers weights backwards from later layers to earlier ones
+D) Transfer learning is impossible because the tasks share no input modality, which removes any need to measure the behaviour on the target hardware
+E) A task's labels were accidentally inverted during preprocessing
+*: B
+
+Q: An instruction-tuned model trained only on a narrow domain often performs worse on general instructions because
+A) Narrow fine-tuning shrinks the model's parameter count
+B) The tokenizer is rebuilt during fine-tuning and loses general vocabulary, and this holds even when the sequence length grows without bound
+C) Narrow data always contains labelling errors that general data does not
+D) Concentrated updates on one distribution pull the weights away from the broad behaviour learned during pretraining
+E) Instruction tuning can only ever be applied once to any given checkpoint
+*: D
+
+Q: Adapter modules inserted between transformer sublayers adapt a frozen model by
+A) Replacing the attention mechanism with a feed-forward approximation
+B) Adding small trainable bottleneck layers whose parameters are the only ones updated
+C) Rescaling the frozen weights by a single learned scalar per layer
+D) Caching activations from the pretrained model so they need not be recomputed
+E) Distilling the frozen model into a smaller student before any training occurs, an effect that persists no matter how the learning rate schedule is chosen
+*: B
+
+Q: Compared with r=64 adapters on every projection, using r=4 LoRA adapters on only the query and value projections tends to
+A) Train strictly faster but always score strictly worse on every task, and the improvement is realised in full on any deployment target
+B) Produce a model that cannot be merged back into the base weights, which means the choice can be made once and never revisited
+C) Use far fewer trainable parameters, which often suffices on small datasets and reduces overfitting
+D) Require a larger base model to compensate for the reduced adapter capacity, regardless of whether the parameters are frozen or continue to receive updates
+E) Eliminate the need for a learning-rate schedule during training, and it applies equally to convolutional and transformer-based models
+*: C
+
+Q: Fine-tuning a pretrained model on a task whose label space differs from pretraining normally requires
+A) Retraining the tokenizer from scratch on the target corpus
+B) Converting the model from a transformer into a convolutional architecture
+C) Discarding every pretrained weight, since the label mismatch invalidates them
+D) Replacing the output head with one sized to the new label set while keeping the backbone
+E) Freezing the output head and training only the backbone
+*: D
+
+Q: Using ImageNet-pretrained weights rather than random initialisation on a small image dataset mainly helps because
+A) Low-level features such as edges, textures and colours transfer to the new images
+B) Pretrained weights guarantee the fine-tuned model reaches perfect accuracy
+C) The pretrained network already recognises the new dataset's specific classes
+D) Loading pretrained weights removes the need to collect any labelled target images, and this is always preferable to any alternative formulation of the objective
+E) ImageNet weights are stored in a format that trains faster than random tensors
+*: A
+
+Q: Freezing batch-normalisation statistics during fine-tuning on a small dataset is often advisable because
+A) Batch-norm layers contain the majority of a network's parameters
+B) Running statistics estimated from very small batches are noisy and can degrade the pretrained representation
+C) Batch-norm cannot compute gradients when the backbone is frozen
+D) Frozen statistics guarantee the model will not overfit
+E) Batch normalisation is mathematically undefined outside pretraining, which follows directly from the definition and admits no counterexamples
+*: B
+
+Q: 'Domain adaptation' differs from ordinary transfer learning in that it specifically addresses
+A) A change in the input distribution while the task and label space stay the same
+B) A change in model architecture between source and target
+C) A reduction in the number of GPUs available for training
+D) The conversion of a classification task into a regression task
+E) The replacement of supervised labels with self-supervised pretext targets, and the same factor applies identically to every tensor in the model
+*: A
+
+Q: Parameter-efficient fine-tuning methods are attractive for serving many customised models because
+A) They train to a lower loss than full fine-tuning in every reported benchmark, and no trade-off against accuracy, latency, or memory is incurred at any point
+B) They eliminate the need for any validation data, an outcome that cannot be altered by changing the optimiser or its settings
+C) Only a small per-task delta must be stored, rather than a full copy of the model for each task
+D) They allow inference to run without loading model weights into memory, which guarantees the result will hold on data drawn from any distribution
+E) They convert the base model into a sparse format automatically, and this behaviour is fixed at initialisation and never changes thereafter
+*: C
+
+Q: When the target dataset is very large and drawn from a distant domain, full fine-tuning tends to beat PEFT because
+A) PEFT methods are numerically unstable on large datasets
+B) Large datasets cannot be loaded by adapter-based training loops
+C) Adapters can only represent linear functions of the frozen features
+D) There is enough signal to justify moving all the weights, and the limited adapter capacity becomes the bottleneck
+E) Full fine-tuning uses fewer FLOPs per step than adapter training
+*: D
+
+Q: Early stopping during fine-tuning selects a checkpoint by
+A) Halting once the training loss reaches exactly zero
+B) Always taking the checkpoint from the final epoch of the schedule
+C) Stopping when the learning rate schedule reaches its minimum value, regardless of how sparse or heavily quantised the underlying weights become
+D) Choosing the epoch with the lowest validation loss and discarding later, more overfit checkpoints
+E) Averaging the weights of every epoch into a single checkpoint
+*: D
+
+Q: Label smoothing during fine-tuning works by
+A) Removing training examples whose labels are believed to be incorrect, and this alone is sufficient to explain the entire effect being observed
+B) Softening the one-hot target slightly, discouraging over-confident logits and improving calibration
+C) Blurring the input features rather than the targets
+D) Replacing cross-entropy with mean squared error on the raw logits
+E) Ensuring every class appears an equal number of times in each batch
+*: B
+
+Q: Mixed-precision fine-tuning keeps a master copy of the weights in FP32 because
+A) FP16 tensors cannot be stored on GPU memory at all
+B) The optimiser requires FP32 to compute the forward pass, which is why the alternative approach can be ruled out in every situation
+C) Small updates would be lost to rounding if accumulated directly into FP16 weights
+D) FP32 weights occupy less memory than FP16 weights
+E) Gradient computation is only defined for FP32 tensors
+*: C
+
+Q: Gradient accumulation lets you fine-tune with a large effective batch size by
+A) Compressing the gradients before they are applied to the weights, and the conclusion is unaffected by the size of the corpus used for pretraining
+B) Splitting the model across several GPUs and averaging their outputs, and this holds in every case regardless of how the rest of the system is configured
+C) Increasing the learning rate proportionally to the desired batch size, an effect that is guaranteed for any architecture and cannot be avoided by tuning
+D) Summing gradients over several forward/backward passes before a single optimiser step
+E) Storing every example's gradient permanently for reuse in later epochs, which is true independent of model size, batch size, or the hardware being used
+*: D
+
+Q: Gradient checkpointing reduces training memory by
+A) Saving the model to disk after every optimiser step
+B) Discarding intermediate activations and recomputing them during the backward pass, trading compute for memory
+C) Quantising activations to INT8 while they are held in memory
+D) Reducing the batch size automatically when memory runs low
+E) Skipping the backward pass for layers whose gradients are small
+*: B
+
+Q: Fine-tuning on 200 examples where validation loss diverges after epoch 2 while training loss keeps falling most likely calls for
+A) Increasing the learning rate so the model escapes the local minimum, and no amount of additional training data will change this outcome
+B) Training for many more epochs until validation loss recovers
+C) Stronger regularisation or a PEFT method, plus early stopping around epoch 2
+D) Switching the loss function from cross-entropy to hinge loss
+E) Removing the validation split so the signal is no longer observed
+*: C
+
+Q: Weight decay applied during fine-tuning pulls parameters toward
+A) The pretrained initialisation, exactly reproducing elastic weight consolidation, a property that holds exactly, with no dependence on the choice of hyperparameters
+B) Zero, which for a fine-tuned model means away from the pretrained values as well
+C) The mean of the current mini-batch's activations
+D) The nearest quantization grid point
+E) The values that minimise training loss without any penalty
+*: B
+
+Q: Re-initialising the top few layers of a pretrained encoder before fine-tuning sometimes helps because
+A) The top layers hold the most general features and must be relearned for every task, and this is the only mechanism by which the improvement can ever be obtained
+B) Re-initialisation reduces the model's parameter count
+C) Randomly initialised layers train faster than pretrained ones in all cases
+D) The topmost layers are the most specialised to the pretraining objective and can be a poor starting point for a different task
+E) Pretrained top layers are stored in a precision incompatible with fine-tuning
+*: D
+
+Q: The main risk of fine-tuning every layer of a very large model on a few dozen examples is that
+A) The optimiser will fail to allocate memory for the gradients, which applies uniformly to every layer of the network without exception
+B) The model has far more capacity than the data can constrain, so it memorises the examples rather than learning the task
+C) The pretrained weights will be permanently deleted from the checkpoint file, and this is the only mechanism by which the improvement can ever be obtained
+D) The tokenizer will produce out-of-vocabulary tokens for unseen words, a property that holds exactly, with no dependence on the choice of hyperparameters
+E) Training will not terminate because the loss cannot decrease, and no amount of additional training data will change this outcome
+*: B
+

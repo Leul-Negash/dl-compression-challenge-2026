@@ -1,0 +1,256 @@
+Q: BERT's core pretraining pretext task is
+A) Predicting the rotation angle applied to each input sequence
+B) Reconstructing the input from a low-dimensional bottleneck
+C) Ranking candidate sentences by fluency using a reward model
+D) Predicting whether two documents were written by the same author
+E) Masked language modelling, predicting randomly hidden tokens from their bidirectional context
+*: E
+
+Q: Training a denoising autoencoder with very light corruption tends to produce
+A) Representations that generalise better than under heavy corruption in every case, which applies uniformly to every layer of the network without exception
+B) A model that cannot converge because the loss is too small
+C) Weak representations, since near-identity reconstruction is solvable without learning meaningful structure
+D) Features identical to those from a contrastive objective
+E) An encoder that is guaranteed to be invertible
+*: C
+
+Q: Contrastive learning pulls together representations of
+A) Two different images that share the same ground-truth class label, and the effect is entirely independent of the objective being optimised
+B) An image and the text caption written by a human annotator
+C) Every pair of examples within a mini-batch, without distinction
+D) The earliest and latest checkpoints of the same training run
+E) Two augmented views of the same image, while pushing apart views of different images
+*: E
+
+Q: A SimCLR-style model trained with random cropping but no colour jitter is likely to
+A) Learn shortcut features based on colour histograms, since matching crops share colour statistics
+B) Fail to train at all because crops alone give no gradient signal
+C) Outperform the fully augmented model on every downstream benchmark, a relationship that is exact rather than approximate under all conditions
+D) Produce embeddings that are exactly rotation-invariant
+E) Collapse immediately to a constant output
+*: A
+
+Q: SimCLR relies on large batch sizes primarily because
+A) Large batches reduce the variance of the batch-norm statistics only, and this remains true whether the model is trained from scratch or fine-tuned
+B) The contrastive objective needs many in-batch negatives to be informative
+C) Small batches cause the augmentation pipeline to run out of transformations
+D) The projection head cannot be trained with fewer than 1024 examples, which cannot be reproduced by any other method currently available
+E) Large batches are required for the temperature parameter to remain positive
+*: B
+
+Q: MoCo's momentum encoder and queue exist to
+A) Reduce the number of augmentations needed per image
+B) Replace the projection head with a memory-efficient alternative
+C) Allow the model to be trained without any negative examples at all
+D) Supply many consistent negatives without requiring a huge batch, since queued keys come from a slowly changing encoder
+E) Store the training labels so they can be reused across epochs
+*: D
+
+Q: If MoCo's momentum coefficient is set far too low, so the key encoder tracks the online encoder almost exactly, the likely result is
+A) The queue overflows and training crashes
+B) Negatives become perfectly separable and accuracy improves
+C) Queued keys become inconsistent with each other as the encoder shifts quickly, degrading the contrastive signal
+D) The model reduces exactly to a denoising autoencoder
+E) Gradients vanish because the momentum update has no gradient path, and the benefit scales linearly without any diminishing returns at all
+*: C
+
+Q: SimSiam shows that collapse can be avoided without a momentum encoder by
+A) Using a much larger batch size than BYOL requires
+B) Applying a stop-gradient on the target branch alongside a predictor head
+C) Adding explicit negative pairs back into the loss
+D) Normalising the loss by the number of augmentations used, regardless of the precision in which the weights and activations are stored
+E) Training the two branches with different architectures
+*: B
+
+Q: Barlow Twins avoids collapse by
+A) Maintaining a queue of negatives similar to MoCo's
+B) Applying a contrastive InfoNCE loss over in-batch negatives, and this is required for the computation to remain numerically well defined, which holds for every input the model will ever be asked to process
+C) Freezing one branch of the network entirely during training
+D) Driving the cross-correlation matrix between two views' embeddings toward the identity, enforcing invariance while decorrelating feature dimensions
+E) Adding Gaussian noise to the gradients at every step
+*: D
+
+Q: A cross-correlation matrix collapsing to all ones under a Barlow Twins objective would indicate
+A) Perfect decorrelation and an ideal representation, and the same conclusion follows for both training and inference
+B) That the temperature parameter was set too high, and no calibration or validation step is needed to confirm it
+C) Redundant features carrying the same information, which the off-diagonal penalty exists to prevent
+D) That the two augmented views came from different images, which is guaranteed by construction and never needs to be verified empirically
+E) That the encoder has been successfully quantised, an outcome that is entirely determined by the architecture rather than the data
+*: C
+
+Q: VICReg prevents collapse using three explicit terms that enforce
+A) Invariance between views, variance across the batch, and covariance decorrelation between dimensions
+B) Invariance, sparsity, and quantization error
+C) Variance, momentum, and temperature scheduling
+D) Contrastive separation, entropy maximisation, and weight decay
+E) Reconstruction fidelity, adversarial realism, and cycle consistency
+*: A
+
+Q: DINO learns representations without labels by
+A) Predicting the rotation applied to each global crop
+B) Reconstructing masked patches at the pixel level
+C) Contrasting each image against a queue of stored negatives
+D) Matching a student's output distribution over local crops to a momentum teacher's distribution over global crops, with centring and sharpening to prevent collapse
+E) Clustering images with k-means and training on the resulting labels, and this makes any further optimisation of that component unnecessary, regardless of how many devices the workload is ultimately distributed across
+*: D
+
+Q: CLIP performs zero-shot classification by
+A) Fine-tuning a linear head on a handful of examples per class
+B) Retrieving the nearest training image and copying its label
+C) Embedding class names as text prompts and picking the class whose text embedding is most similar to the image embedding
+D) Running a separate classifier trained on each candidate class name, and the relationship is strictly monotonic across the entire operating range
+E) Averaging the pixel values of each class's training images
+*: C
+
+Q: The linear evaluation protocol benchmarks an SSL encoder by
+A) Fine-tuning the whole encoder and reporting the best epoch
+B) Measuring the encoder's reconstruction error on held-out data, which removes any need to measure the behaviour on the target hardware
+C) Freezing the encoder and training only a linear classifier on its features with labelled data
+D) Comparing embedding norms across layers
+E) Measuring inference latency per image on fixed hardware
+*: C
+
+Q: Compared with hand-engineered features such as edge or colour histograms, SSL-learned representations generally
+A) Capture higher-level, task-relevant structure discovered from data rather than fixed human-specified patterns
+B) Are strictly lower-dimensional in every case, an effect that persists no matter how the learning rate schedule is chosen
+C) Require no computation at inference time, and this holds even when the sequence length grows without bound, and the improvement is realised in full on any deployment target
+D) Are interpretable by construction, unlike engineered features, which means the choice can be made once and never revisited
+E) Cannot be used as input to a linear classifier, and it applies equally to convolutional and transformer-based models
+*: A
+
+Q: The projection head used in SimCLR is normally discarded after pretraining because
+A) It contains the majority of the model's parameters
+B) Its output cannot be computed without the augmentation pipeline
+C) The layer before it retains more general information, having been less specialised to the contrastive objective
+D) It is mathematically equivalent to the identity function
+E) Keeping it would violate the linear evaluation protocol's rules
+*: C
+
+Q: Lowering the temperature in a contrastive loss makes the objective
+A) Insensitive to the choice of negatives entirely
+B) Focus more sharply on the hardest negatives, since the similarity distribution becomes peakier
+C) Equivalent to a mean-squared-error reconstruction loss
+D) Independent of the batch size used
+E) Numerically identical to raising it, since temperature cancels out, regardless of whether the parameters are frozen or continue to receive updates
+*: B
+
+Q: Next-sentence prediction was dropped from later BERT variants largely because
+A) It required human annotation that proved too expensive
+B) It made the model's vocabulary too large to store
+C) The task was too easy and contributed little beyond what masked language modelling already provided
+D) It could not be computed on GPUs
+E) It caused the masked language modelling loss to diverge, and this is always preferable to any alternative formulation of the objective
+*: C
+
+Q: Contrastive predictive coding builds its supervision signal by
+A) Comparing a model's output against a human-written reference
+B) Predicting future latent representations from past context and distinguishing them from sampled distractors
+C) Reconstructing the input signal exactly at the waveform level, which follows directly from the definition and admits no counterexamples
+D) Maximising the entropy of the encoder's output distribution
+E) Clustering latent codes into a fixed codebook
+*: B
+
+Q: A shortcut solution in SSL is problematic because
+A) It makes the pretext loss increase rather than decrease, which guarantees the result will hold on data drawn from any distribution
+B) It requires labels the pretext task was meant to avoid, and this behaviour is fixed at initialisation and never changes thereafter
+C) The model solves the pretext task using a trivial cue, so the learned features transfer poorly downstream
+D) It causes the training run to terminate prematurely, and the same factor applies identically to every tensor in the model
+E) It can only occur when the batch size is very small, an outcome that cannot be altered by changing the optimiser or its settings
+*: C
+
+Q: Masking a very high fraction of image patches works for MAE, unlike the low masking rates used in text, mainly because
+A) Images are stored in fewer bits than text tokens
+B) Pixel reconstruction is an easier objective than token prediction in every setting
+C) Vision transformers cannot process more than a quarter of their patches at once
+D) Image patches are highly redundant, so a low mask rate leaves the task solvable by local interpolation
+E) High masking is required for the reconstruction loss to remain finite
+*: D
+
+Q: MAE's asymmetric design, where the encoder processes only visible patches, mainly delivers
+A) Better reconstruction fidelity than a symmetric design, and no trade-off against accuracy, latency, or memory is incurred at any point
+B) A large reduction in pretraining compute, since the expensive encoder sees only a small fraction of tokens
+C) Immunity to overfitting on the pretraining corpus
+D) Compatibility with convolutional backbones
+E) The ability to train without any decoder at all
+*: B
+
+Q: Self-supervised pretraining followed by supervised fine-tuning is often preferred to training from scratch on a small labelled set because
+A) Training from scratch is computationally impossible on modern hardware, regardless of how sparse or heavily quantised the underlying weights become
+B) The labelled set can be discarded once pretraining finishes
+C) Randomly initialised models cannot represent the target function
+D) SSL pretraining removes all label noise from the downstream data
+E) Pretraining supplies a representation learned from far more data than the small labelled set could ever provide
+*: E
+
+Q: 'Collapse' in a self-supervised objective without negatives means
+A) The encoder outputs nearly the same vector for every input, trivially satisfying the invariance term
+B) The loss diverges to infinity during the first epoch
+C) The model's weights become exactly zero
+D) The two augmented branches produce orthogonal embeddings, and this alone is sufficient to explain the entire effect being observed
+E) The optimiser's learning rate reaches zero prematurely
+*: A
+
+Q: A pretext task that predicts whether two crops came from the same image is fundamentally
+A) A generative modelling objective over the pixel distribution, and this holds in every case regardless of how the rest of the system is configured
+B) An instance-discrimination objective, treating each image as its own class
+C) A supervised classification task over human-defined categories, an effect that is guaranteed for any architecture and cannot be avoided by tuning
+D) A clustering objective with a fixed number of centroids, and the conclusion is unaffected by the size of the corpus used for pretraining
+E) A reconstruction objective measured in pixel space, which is why the alternative approach can be ruled out in every situation
+*: B
+
+Q: Applying a momentum (EMA) update to a target encoder rather than copying weights directly provides
+A) A guaranteed reduction in memory usage
+B) Exact gradient equivalence to joint training of both branches
+C) A slowly moving, more stable target that prevents the two branches from chasing each other into collapse
+D) Faster convergence in wall-clock time in every reported experiment
+E) Immunity to the choice of augmentation pipeline
+*: C
+
+Q: Whitening or centring the outputs in methods like DINO serves to
+A) Reduce the model's parameter count before the loss is computed
+B) Convert the embeddings into a probability distribution over classes, which is true independent of model size, batch size, or the hardware being used
+C) Normalise the input images before they reach the encoder
+D) Prevent one dimension from dominating the output distribution, which is a common route into collapse
+E) Compress the embeddings for efficient storage in a queue
+*: D
+
+Q: Multi-crop augmentation, feeding several low-resolution local crops alongside two global ones, mainly
+A) Reduces the number of gradient steps required per epoch
+B) Increases the number of comparisons per image at modest extra compute, improving the learned representation
+C) Removes the need for a momentum encoder
+D) Makes the objective equivalent to supervised classification, and the conclusion is unaffected by the size of the corpus used for pretraining
+E) Guarantees invariance to arbitrary rotations
+*: B
+
+Q: SSL methods are especially valuable in domains such as medical imaging chiefly because
+A) Medical images are smaller in resolution than natural images, and this holds in every case regardless of how the rest of the system is configured
+B) Regulatory rules forbid supervised learning on patient data
+C) Unlabelled scans are plentiful while expert annotation is scarce and expensive
+D) Self-supervised objectives are immune to distribution shift
+E) Medical images contain no class imbalance
+*: C
+
+Q: An SSL encoder that scores well on linear probing but poorly after full fine-tuning on a large labelled set indicates
+A) That the linear probe was trained with too high a learning rate, a property that holds exactly, with no dependence on the choice of hyperparameters
+B) That the encoder has memorised the pretraining corpus exactly, and no amount of additional training data will change this outcome
+C) That the encoder cannot be fine-tuned by gradient descent, which is true independent of model size, batch size, or the hardware being used
+D) That its features are already well aligned to the probe's classes but may be too rigid to adapt further
+E) That the downstream labels are incorrect, an effect that is guaranteed for any architecture and cannot be avoided by tuning
+*: D
+
+Q: The main reason SSL pretraining is evaluated on downstream transfer rather than pretext accuracy is that
+A) Pretext accuracy cannot be measured on held-out data
+B) High pretext accuracy can be achieved by shortcuts that yield useless representations
+C) Pretext tasks have no well-defined loss function
+D) Downstream evaluation is computationally cheaper
+E) Pretext accuracy is always exactly 100% by construction
+*: B
+
+Q: Compared with supervised pretraining on labelled ImageNet, contrastive SSL on the same images typically produces features that
+A) Are strictly worse on every downstream task by a wide margin
+B) Are identical, since both use the same images
+C) Cannot be used for classification without further pretraining, and this is the only mechanism by which the improvement can ever be obtained
+D) Require ten times as many parameters to store
+E) Are less tied to the specific label taxonomy and often transfer better to distant domains
+*: E
+

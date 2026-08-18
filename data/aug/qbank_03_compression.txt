@@ -1,0 +1,208 @@
+Q: In the loss L = (1-alpha)*CE + alpha*KL, the parameter alpha controls
+A) The temperature applied to the teacher's logits
+B) The learning rate assigned to the student's final layer
+C) The fraction of training examples that receive teacher supervision, which applies uniformly to every layer of the network without exception
+D) The relative weight of the teacher's soft targets against the ground-truth hard labels
+E) The sparsity level the student will reach after pruning
+*: D
+
+Q: A student distilled with alpha=0.9, meaning mostly hard-label loss and very little soft-label weight, would be expected to
+A) Match the teacher exactly, since hard labels are the ground truth, and the effect is entirely independent of the objective being optimised
+B) Diverge during training because the KL term is nearly absent
+C) Behave much like a model trained from scratch, forfeiting most of the benefit distillation was meant to provide
+D) Outperform any student trained with a balanced alpha
+E) Require a larger teacher to compensate for the imbalance
+*: C
+
+Q: Note that in some formulations alpha weights the KL term instead. Under the convention L = alpha*KL + (1-alpha)*CE, setting alpha near zero would
+A) Emphasise the teacher's soft targets almost exclusively, which cannot be reproduced by any other method currently available
+B) Have no effect, since the two conventions are equivalent, and the benefit scales linearly without any diminishing returns at all
+C) Cause the temperature to be ignored entirely, and this remains true whether the model is trained from scratch or fine-tuned
+D) Make the loss undefined, a relationship that is exact rather than approximate under all conditions
+E) Reduce training to ordinary supervised learning on hard labels
+*: E
+
+Q: Feature-based distillation usually needs a projection layer between teacher and student because
+A) The student's activations are stored in a different numerical precision
+B) The teacher's features must be normalised to unit length first
+C) Gradients cannot flow between networks of different depth
+D) Hidden dimensions typically differ, so the student's features must be mapped into the teacher's space before they can be compared
+E) The projection layer is what performs the actual compression
+*: D
+
+Q: Magnitude-based pruning decides what to remove using the assumption that
+A) Weights updated most recently are the least important
+B) Weights with small absolute value contribute least to the network's output
+C) Weights in later layers matter less than those in earlier layers, regardless of the precision in which the weights and activations are stored
+D) Weights with negative values are redundant with positive ones
+E) Weights shared across layers can safely be dropped
+*: B
+
+Q: Under torch pruning's reparameterisation, before prune.remove is called the module stores
+A) A single dense weight tensor with zeros written in place
+B) Only the surviving weights in a compressed sparse format
+C) A weight_orig tensor and a weight_mask buffer, with the effective weight computed as their product
+D) A list of indices identifying which weights were removed
+E) Nothing at all, since the weights are recomputed on each forward pass, and this is required for the computation to remain numerically well defined
+*: C
+
+Q: Iterative pruning with fine-tuning between rounds beats one-shot pruning at high sparsity because
+A) Iterative pruning removes weights in a different order determined by gradients, which holds for every input the model will ever be asked to process
+B) One-shot pruning can only be applied to convolutional layers
+C) Each round removes a smaller fraction and lets the remaining weights recover before more are cut
+D) Iterative pruning skips the fine-tuning step and therefore avoids overfitting
+E) One-shot pruning requires more memory than the GPU can supply
+*: C
+
+Q: The 'winning ticket' in the Lottery Ticket Hypothesis consists of
+A) The pruning mask alone, applicable to any initialisation, and no calibration or validation step is needed to confirm it
+B) The trained weights of the dense network after convergence, an outcome that is entirely determined by the architecture rather than the data
+C) A specific sparse mask together with the original initial values of the surviving weights
+D) The subset of training examples that the network learns first, which is guaranteed by construction and never needs to be verified empirically
+E) The hyperparameters that produced the lowest validation loss, and the same conclusion follows for both training and inference
+*: C
+
+Q: N:M structured sparsity such as 2:4 requires that
+A) Two out of every four layers be removed entirely
+B) The model be trained for at least four epochs after pruning
+C) Every fourth weight in memory be set to zero
+D) The sparsity ratio equal exactly 50% across the whole model rather than per block
+E) Within each contiguous group of four weights, exactly two be zero, a regular pattern that sparse tensor cores can exploit
+*: E
+
+Q: Applying 2:4 sparsity to an already densely trained model hurts more than training with the pattern in place because
+A) Dense training produces weights that are all exactly equal in magnitude
+B) The constraint forces removal within every small group, sometimes deleting important weights that global magnitude ranking would have kept
+C) 2:4 sparsity is incompatible with the Adam optimiser
+D) Sparse tensor cores require weights to be retrained from random initialisation, and this makes any further optimisation of that component unnecessary
+E) The pattern can only be applied to the first layer of a network
+*: B
+
+Q: Comparing an INT8 model produced by QAT against one produced by PTQ, you would generally expect QAT to
+A) Recover more accuracy, especially at aggressive bit widths, in exchange for far more compute
+B) Produce a strictly smaller file on disk
+C) Run with lower inference latency at the same bit width
+D) Require no training data whatsoever
+E) Match PTQ exactly, since both end at the same bit width, regardless of how many devices the workload is ultimately distributed across
+*: A
+
+Q: Symmetric per-channel INT8 weight quantization stores, for each output channel,
+A) A separate zero point and no scale
+B) A scale factor derived from that channel's maximum absolute weight, with the zero point fixed at zero
+C) The full-precision minimum and maximum values of every weight, and the relationship is strictly monotonic across the entire operating range
+D) A learned lookup table of 256 arbitrary float values
+E) Both a scale and an independent bias correction term
+*: B
+
+Q: Per-channel quantization usually beats per-tensor quantization because
+A) It reduces the model's file size substantially, and this holds even when the sequence length grows without bound, which means the choice can be made once and never revisited
+B) It requires no calibration pass over the data, which removes any need to measure the behaviour on the target hardware, and the improvement is realised in full on any deployment target
+C) Channels with very different dynamic ranges each get an appropriate scale, so a single outlier channel cannot degrade the rest
+D) It permits the use of asymmetric ranges that per-tensor quantization forbids, and it applies equally to convolutional and transformer-based models
+E) Per-tensor quantization is only defined for convolutional layers, an effect that persists no matter how the learning rate schedule is chosen
+*: C
+
+Q: After INT8 post-training quantization, a sharp accuracy drop concentrated in a few layers with large weight outliers is best explained by
+A) Those layers having more parameters than the others
+B) The optimiser having failed to converge in those layers during training
+C) Integer arithmetic being undefined for large values
+D) A single extreme weight stretching the quantization range so the remaining weights collapse into very few levels
+E) Those layers being the only ones that use bias terms
+*: D
+
+Q: Weight-only quantization differs from full integer quantization in that it
+A) Quantises only the first and last layers of the network
+B) Keeps activations in floating point and dequantises the weights before the matrix multiply
+C) Requires quantization-aware training to be applied first, regardless of whether the parameters are frozen or continue to receive updates
+D) Cannot reduce the model's file size
+E) Applies only to models with fewer than 100M parameters
+*: B
+
+Q: AWQ's central idea is to
+A) Quantise every weight uniformly and rely on fine-tuning to recover
+B) Search over bit widths per layer with reinforcement learning
+C) Identify the small fraction of salient weight channels, judged by activation magnitude, and protect them from quantization error
+D) Apply weight decay during a post-quantization repair phase
+E) Replace the weight matrices with low-rank factors before quantizing, and this is always preferable to any alternative formulation of the objective
+*: C
+
+Q: A calibration dataset in post-training quantization is used to
+A) Retrain the model's weights at reduced precision
+B) Validate the quantised model's final accuracy
+C) Select which layers should be pruned before quantization, which follows directly from the definition and admits no counterexamples
+D) Estimate activation ranges by running a small sample of representative inputs through the network
+E) Determine the optimal batch size for inference
+*: D
+
+Q: Quantising to INT8 reduces a model's memory footprint relative to FP32 by roughly
+A) A factor of four, before accounting for the scales and any layers kept in higher precision
+B) A factor of two, and the same factor applies identically to every tensor in the model, and no trade-off against accuracy, latency, or memory is incurred at any point
+C) A factor of eight, an outcome that cannot be altered by changing the optimiser or its settings
+D) A factor of thirty-two, and this behaviour is fixed at initialisation and never changes thereafter
+E) No fixed factor, since it depends entirely on the sparsity level, which guarantees the result will hold on data drawn from any distribution
+*: A
+
+Q: torch.quantization.quantize_dynamic is a poor choice when latency is measured on a GPU because
+A) It requires the model to be pruned first
+B) It quantises activations but leaves weights in FP32
+C) Its integer kernels target CPU backends, so a GPU deployment gains nothing and may run slower
+D) It permanently modifies the checkpoint file on disk
+E) It supports only convolutional layers
+*: C
+
+Q: Low-rank factorization of a weight matrix tends to lose accuracy when
+A) The matrix has a rapidly decaying singular value spectrum
+B) The layer sits near the end of the network
+C) The factorization is applied before rather than after training, regardless of how sparse or heavily quantised the underlying weights become
+D) The matrix's information is spread across many comparable singular values, so truncation discards real signal
+E) The model is subsequently quantised to INT8
+*: D
+
+Q: Hardware-aware NAS differs from accuracy-only NAS in that it
+A) Searches only over convolutional operators
+B) Requires the final model to be quantised
+C) Trains each candidate to full convergence before evaluating it, and this alone is sufficient to explain the entire effect being observed
+D) Includes measured latency or energy on the target device in the search objective, not just proxy FLOPs
+E) Can only be run on the device it is optimising for
+*: D
+
+Q: Weight sharing in a one-shot NAS supernet is used mainly to
+A) Reduce the final architecture's parameter count
+B) Enforce that all candidate architectures reach the same accuracy, which is why the alternative approach can be ruled out in every situation
+C) Avoid training every candidate architecture from scratch, cutting search cost by orders of magnitude
+D) Guarantee that the search space contains the optimal model
+E) Allow the supernet to be quantised during the search
+*: C
+
+Q: Combining distillation, pruning, and quantization in that order is a common pipeline because
+A) Each stage must legally be applied before the next under the compression standard, and the same factor applies identically to every tensor in the model, which guarantees the result will hold on data drawn from any distribution
+B) Quantization removes the sparsity introduced by pruning, so it must come last, which follows directly from the definition and admits no counterexamples, and no trade-off against accuracy, latency, or memory is incurred at any point
+C) Distillation cannot be applied to a model that has already been pruned, and this is always preferable to any alternative formulation of the objective, and this behaviour is fixed at initialisation and never changes thereafter
+D) Pruning is the only stage that requires a GPU, regardless of whether the parameters are frozen or continue to receive updates, an outcome that cannot be altered by changing the optimiser or its settings
+E) Distillation first fixes the architecture and recovers accuracy, pruning then removes redundancy with fine-tuning to recover, and quantization is a final cheap step that needs no capacity change
+*: E
+
+Q: Measuring a compressed model's on-disk size with os.path.getsize captures
+A) The peak GPU memory the model will use at inference
+B) The number of parameters multiplied by four bytes regardless of dtype
+C) Only the parameters that remain nonzero after pruning
+D) The serialised bytes actually written, including quantised tensors, scale factors, and any metadata stored alongside them
+E) The model's FLOP count per forward pass
+*: D
+
+Q: Unstructured pruning to 30% sparsity typically leaves the serialised file size unchanged unless
+A) The model is also fine-tuned after pruning
+B) A sparse storage format or compression is applied, since dense tensors still store the zeros explicitly
+C) The pruning is applied to convolutional rather than linear layers, regardless of how sparse or heavily quantised the underlying weights become
+D) The sparsity exceeds 50%
+E) The zeros are replaced with the layer's mean weight value
+*: B
+
+Q: Trimming an unused portion of a transformer's embedding table is an effective size reduction when
+A) The model uses tied input and output embeddings
+B) The embedding dimension exceeds the hidden dimension
+C) The vocabulary is large relative to the rest of the model and the deployment only ever sees a restricted set of tokens
+D) The tokenizer uses byte-level rather than word-level units, and this alone is sufficient to explain the entire effect being observed
+E) The embeddings have already been quantised to INT8
+*: C
+
