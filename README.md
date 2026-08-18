@@ -62,12 +62,12 @@ output row. Everything that is not a 2-D float tensor stays in FP16.
 ### quantize_dynamic is CPU only
 
 The obvious move from the course notes is `torch.quantization.quantize_dynamic`.
-I lost most of a day to this before checking the docs properly: its kernels are
-CPU only.
+Its kernels are CPU only, which rules it out here.
 
 That matters because latency is scored as total inference time over 108 rows. To
-stay under 30 ms per question the whole run has to finish in 3.24 seconds. On
-the 2 vCPUs of a free Kaggle box it was nowhere close, off by about 10x.
+stay under 30 ms per question the whole run has to finish in 3.24 seconds. Two
+vCPUs running a base-sized transformer over 108 questions with five options each
+is not going to do that.
 
 The size check is separate though. It is just `os.path.getsize` on the saved
 file, so there is nothing stopping you from storing INT8 and running FP16. The
@@ -115,7 +115,7 @@ figure at 19.3%, under the line.
 
 My first working version scored 0.9769 on held-out CV. A 90 MB pruned student
 was apparently beating its own 435M teacher by six points, which is not a thing
-that happens. I nearly submitted it.
+that happens, so I went looking for the reason before trusting it.
 
 The cause: I was pooling all the teacher predictions into one out-of-fold array
 and distilling every student against it. But the out-of-fold logit for a given
@@ -150,8 +150,8 @@ topic vocabulary that any two questions on LoRA would share.
 Option length was the other one. In the provided data the correct answer is the
 second-longest of the five 58% of the time, against 20% by chance, because the
 longest option is usually an over-qualified wrong one. Writing from scratch I
-did the opposite without noticing: my correct answer was the longest in 176 of
-181 questions. Training on that would have taught the model a cue that is
+came out the other way round: the correct answer was the longest in 176 of 181
+questions. Training on that would have taught the model a cue that is
 backwards for this test set. `tools/balance_aug.py` extends chosen distractors
 with absolutist qualifiers until the profile matches, 21/59/20 percent for
 longest/second-longest/shortest against the provided data's 18/58/18.
