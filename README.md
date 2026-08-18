@@ -28,16 +28,18 @@ making the file small and the inference fast. Compress a teacher below 500M
 parameters using distillation, pruning and quantization, then answer a hidden
 set of A-E questions about deep learning topics.
 
-There are 72 training questions and 108 test questions. 32 of the test rows feed
-the public leaderboard and the other 76 are held back for the private one.
+There are 72 training questions and 108 test questions. Part of the test set
+feeds the public leaderboard during the competition and the rest is held back
+to decide the final standing. Kaggle does not say which rows are which.
 
 ## Approach
 
-I used `DeBERTa-v3-large-mnli-fever-anli-ling-wanli` (435M) as the teacher. The
-NLI checkpoint matters more than it looks. Scoring a question against five
-candidate answers is close to an entailment problem, and with 72 training
-examples there is no way to learn that from a plain pretrained model. Starting
-from a model that already does entailment gives you most of the task for free.
+I used `DeBERTa-v3-large-mnli-fever-anli-ling-wanli` (435M) as the teacher.
+Scoring a question against five candidate answers is close to an entailment
+problem, and with only 72 training examples there is very little room to learn
+that mapping from scratch, so an NLI checkpoint seemed like the best use of the
+data available. I did not benchmark it against the plain pretrained model, so
+this is reasoning rather than a measured comparison.
 
 Five folds, 4 epochs each, batch size 2 with gradient checkpointing so it fits
 on a T4. Each fold teacher then predicts on every row.
@@ -79,17 +81,22 @@ Following the notes would have halved my grade.
 
 DeBERTa-v3 has a 128,000 token vocabulary. At 768 dimensions that is 98M
 parameters of embeddings against roughly 86M for the actual transformer. The
-lookup table was larger than the network reading from it, and the whole thing
-quantized to about 184 MB, over the cap.
+lookup table was larger than the network reading from it. At one INT8 byte per
+parameter that is about 184 MB, over the cap. I never built that version, the
+figure is just the parameter count.
 
 Both CSVs are given up front and the inference notebook runs with no internet,
 so the set of token ids the model can ever encounter is fixed and I can just
-compute it. Tokenizing every prompt and option in train and test gives 3,652
-distinct ids out of 128,000. Keeping those rows and remapping input ids through
-a small lookup array drops the file from 184 MB to 90.26 MB. No risk of an
-unknown token, since the vocabulary is built from the exact text the model will
-see. Most of my size saving came from this rather than from any of the three
-required steps.
+compute it. Tokenizing every prompt and option in train, test and my written
+questions gives 3,652 distinct ids out of 128,000. Keeping those rows and
+remapping input ids through a small lookup array drops the file to 90.26 MB. No
+risk of an unknown token, since the vocabulary is built from the exact text the
+model will see.
+
+Quantization is the bigger saving in absolute terms, roughly 550 MB against the
+trim's 94 MB, since it takes every weight from four bytes down to one. But INT8
+on its own still left the model over the limit. The trim is what cleared the
+cap.
 
 ### Pruning did not shrink anything
 
@@ -166,8 +173,10 @@ noise, so most of that gain did not survive distillation.
 
 ### Measurement noise
 
-MAP@3 credit comes in thirds, so on a 32 row public leaderboard the smallest
-possible non-zero gap between two submissions is (1/3)/32 = 0.0104.
+MAP@3 gives 1, 1/2 or 1/3 credit per question, so on a leaderboard this small
+the possible scores sit on a coarse grid. Judging by the values, the public
+split looks like about 32 rows, which puts one question moving by a third of a
+point at 0.0104.
 
 Nearly every difference I dealt with was exactly that size, including the gap
 between my two best models and my margin over second place. At one point the
