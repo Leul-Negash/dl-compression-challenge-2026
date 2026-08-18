@@ -1,207 +1,219 @@
 # Advanced DL Compression Challenge 2026
 
-Distilling DeBERTa-v3-large into a 90 MB student that answers deep-learning
-multiple-choice questions at 10 ms per question on a T4.
+My solution for the compression challenge: a DeBERTa-v3-large teacher distilled
+down to a 90 MB student that answers the multiple-choice questions in about
+10 ms each on a T4.
 
-| Metric | Result | Limit |
+## Results
+
+| | Result | Limit |
 | --- | --- | --- |
-| MAP@3 (public leaderboard) | 0.93750 | |
-| MAP@3 (5-fold CV, held out) | 0.9421 | |
-| Model size on disk | 90.26 MB | 150 MB |
-| Average latency | 10.4 ms / question | 30 ms |
-| Size multiplier | 1.000 | |
-| Latency multiplier | 1.000 | |
+| Accuracy (MAP@3, public leaderboard) | 0.93750 | |
+| Accuracy (MAP@3, 5-fold CV) | 0.9421 | |
+| Model size | 90.26 MB | 150 MB |
+| Latency | 10.4 ms per question | 30 ms |
 
-`Final Grade = MAP@3 x min(1, 30/latency_ms) x min(1, 150/size_MB)`, so both
-multipliers sit at their cap and the grade is the MAP@3 untouched.
+The grade is `MAP@3 x min(1, 30/latency) x min(1, 150/size)`. Both multipliers
+come out at 1.000, so nothing is lost to the size or speed penalty.
 
-## Problem
+## The problem
 
-Transformers hit a memory wall in deployment. Attention is quadratic in sequence
-length, and moving weight matrices through GPU memory dominates latency during
-inference. On edge hardware an 8B model is simply not runnable.
+Transformers are expensive to deploy. Attention cost grows with the square of
+sequence length, and during inference most of the time goes on moving weights
+through GPU memory rather than on arithmetic. On a phone or a small edge box you
+cannot run an 8B model at all.
 
-The task: take a large teacher model, compress it below 500M parameters through
-distillation, pruning and quantization, and answer a hidden set of A-E multiple
-choice questions on advanced deep learning topics. Scored on MAP@3, then
-multiplied down if the artifact exceeds 150 MB or 30 ms per question.
+So the task is to keep as much of a large model's ability as possible while
+making the file small and the inference fast. Concretely: compress a teacher
+below 500M parameters using distillation, pruning and quantization, then answer
+a hidden set of A-E questions about deep learning topics.
 
-72 training questions are provided. 108 test questions are scored, split into a
-32-row public leaderboard and a 76-row private one.
+There are 72 training questions and 108 test questions. 32 of the test rows feed
+the public leaderboard and the other 76 are held back for the private one.
 
-## Pipeline
+## Approach
 
-**Teacher.** `DeBERTa-v3-large-mnli-fever-anli-ling-wanli`, 435M parameters.
-Starting from an NLI checkpoint rather than the raw pretrained model matters a
-lot here: entailment is close to multiple-choice scoring, and with only 72
-training examples there is not enough signal to learn that relationship from
-scratch. Trained 4 epochs per fold across 5 folds, batch size 2 with gradient
-checkpointing to fit on a T4.
+I used `DeBERTa-v3-large-mnli-fever-anli-ling-wanli` (435M) as the teacher. The
+NLI checkpoint matters more than it looks. Scoring a question against five
+candidate answers is close to an entailment problem, and with 72 training
+examples there is no way to learn that from a plain pretrained model. Starting
+from a model that already does entailment gives you most of the task for free.
 
-**Distillation.** Each fold teacher predicts on every row. The student for fold
-*f* is trained against the logits from teacher *f* only. Loss is
-`0.7 * KL(student/T || teacher/T) * T^2 + 0.3 * CE(student, label)` with `T = 3`.
+Five folds, 4 epochs each, batch size 2 with gradient checkpointing so it fits
+on a T4. Each fold teacher then predicts on every row.
 
-**Student.** `DeBERTa-v3-base-mnli-fever-anli`, 88.8M parameters after the
-vocabulary trim below.
+The student is `DeBERTa-v3-base-mnli-fever-anli`, 88.8M parameters after the
+vocabulary trim described below. For fold f the student is trained only against
+the logits of teacher f, which is the part I got wrong the first time (see the
+cross-validation section). Loss is
 
-**Pruning.** Global unstructured L1 pruning at 25% over all `nn.Linear` weights,
-followed by 5 recovery epochs, then `prune.remove` to fold the masks into the
-weights. Measured sparsity is 25.0% across linear layers and 24.1% across the
-whole model.
+```
+0.7 * KL(student/T || teacher/T) * T^2  +  0.3 * CE(student, label)
+```
 
-**Quantization.** Post-training INT8, symmetric, one scale per output row, applied
-to every 2-D floating point tensor. Everything else stays FP16.
+with T = 3.
 
-**Extra: vocabulary trimming.** See finding 2.
+After that: 25% global unstructured L1 pruning over the linear layers, 5 epochs
+of recovery training, then INT8 post-training quantization with one scale per
+output row. Everything that is not a 2-D float tensor stays in FP16.
 
-**Extra: written training data.** See finding 5.
+## What I found
 
-## Key findings
+### Quantizing for size and quantizing for speed are not the same job
 
-### 1. Quantizing for latency and quantizing for size are different problems
+The obvious move from the course notes is `torch.quantization.quantize_dynamic`.
+I lost most of a day to this before checking the docs properly: its kernels are
+CPU only.
 
-The obvious route from the course notes is `torch.quantization.quantize_dynamic`.
-Its kernels are CPU-only. Latency here is scored as total inference time divided
-by 108 rows, so the entire run has to finish inside 3.24 seconds to stay under
-30 ms per question. On the 2 vCPUs of a free Kaggle instance that misses by
-roughly an order of magnitude.
+That matters because latency is scored as total inference time over 108 rows.
+To stay under 30 ms per question the whole run has to finish in 3.24 seconds. On
+the 2 vCPUs of a free Kaggle box it was nowhere close, off by about 10x.
 
-What the grader actually measures is `os.path.getsize` of the saved artifact. So
-INT8 is used for **storage**, and the weights are dequantized to FP16 and run on
-the T4 at inference. The file on disk is INT8; the forward pass is not. This is
-the single decision that keeps both multipliers at 1.000.
+What the grader actually measures for size is `os.path.getsize` on the saved
+file. Those are two separate requirements and they can be met separately. So I
+store INT8 and run FP16 on the GPU: the weights are quantized when saved,
+dequantized at load time, and the forward pass never touches an integer kernel.
+The file is 90 MB and each question takes 10 ms. Doing it the documented way
+would have halved the grade.
 
-### 2. The embedding table was more than half the model
+### The embedding table was bigger than the model
 
-DeBERTa-v3 ships a 128,000-token SentencePiece vocabulary. At 768 dimensions that
-is 98M parameters of embedding against roughly 86M of transformer, so the
-embedding table alone was larger than the network using it. Quantized to INT8 the
-full model came to about 184 MB, over the 150 MB cap.
+DeBERTa-v3 has a 128,000 token vocabulary. At 768 dimensions that is 98M
+parameters of embeddings against roughly 86M for the actual transformer. The
+lookup table was larger than the network reading from it, and the whole thing
+quantized to about 184 MB, over the cap.
 
-Both `train.csv` and `test.csv` are available up front and internet is off, so the
-set of token IDs the model can ever see is fixed and knowable. Tokenizing every
-prompt and option in both files yields 3,652 distinct IDs. Keeping only those
-rows of the embedding matrix and remapping input IDs through a lookup array takes
-the artifact from 184 MB to 90.26 MB with no risk of an out-of-vocabulary token,
-because the vocabulary is derived from the exact text the model will be asked
-about.
+Both CSVs are given up front and the inference notebook runs with no internet,
+so the set of token ids the model can ever encounter is fixed and I can just
+compute it. Tokenizing every prompt and option in train and test gives 3,652
+distinct ids out of 128,000. Keeping those rows and remapping input ids through
+a small lookup array drops the file from 184 MB to 90.26 MB. No risk of an
+unknown token, because the vocabulary is built from the exact text the model
+will see.
 
-### 3. Unstructured pruning bought no size reduction at all
+This was the single biggest size win, and it has nothing to do with the three
+required compression steps.
 
-Pruning is a required phase, and the accuracy cost is small, but it is worth
-being clear about what it does and does not do here. The artifact stores dense
-INT8 tensors, so a zeroed weight still occupies one byte. Running the pipeline at
-30% and at 25% sparsity produced files of identical size, 90,261,468 bytes both
-times.
+### Pruning did not make the file any smaller
 
-Every megabyte saved came from quantization and the vocabulary trim. Unstructured
-sparsity only pays off with a sparse storage format or hardware that exploits the
-pattern, neither of which applies to a `torch.save` of dense tensors on a T4.
+Pruning is required and the accuracy cost is small, but it is worth being honest
+about what it achieved here, which is nothing in terms of size.
 
-The practical consequence: since 30% and 25% cost the same on disk, there is no
-reason to prune harder than the requirement. The pipeline uses 25%, which clears
-the 20% floor whether sparsity is measured over the pruned linear layers (25.0%)
-or the whole network including embeddings and biases (24.1%).
+The artifact holds dense INT8 tensors. A pruned weight is still a zero taking up
+one byte. I ran the pipeline at 30% and then at 25% sparsity and the output files
+were the same size to the byte, 90,261,468 both times.
 
-### 4. Cross-validation leaked through the distillation targets
+Unstructured sparsity only pays off if you store it in a sparse format or run it
+on hardware that skips the zeros, and neither applies to `torch.save` of dense
+tensors on a T4. All the size reduction came from quantization and the vocabulary
+trim.
 
-The first working version scored 0.9769 on held-out CV, with a pruned 90 MB
-student apparently beating its own 435M teacher by six points. That was a bug in
-my setup, not a result.
+Since 30% and 25% cost the same on disk, there was no reason to prune harder than
+required. I settled on 25%, which clears the 20% floor whether you measure over
+the pruned linear layers (25.0%) or over the whole network including embeddings
+and biases (24.1%). Pruning at 20% would have put the whole-network figure at
+19.3%, under the line.
 
-Teacher predictions were pooled into a single out-of-fold array, and the student
-for fold *f* was distilled against that array's training rows. But each of those
-out-of-fold logits came from a teacher that had trained on fold *f*'s validation
-rows. Information about the held-out questions reached the student through the
-teacher's parameters, even though no held-out row was ever in the student's
-training set.
+### A leak in my cross-validation
 
-The fix is to keep each fold teacher's predictions separately and give the
-student for fold *f* only the targets from teacher *f*, which never saw that
-fold's validation rows. Corrected CV came out at 0.9375, four points lower. That
-number then matched the public leaderboard exactly on first submission, which is
-what gave me confidence the harness was honest.
+My first working version scored 0.9769 on held-out CV. A 90 MB pruned student was
+apparently beating its own 435M teacher by six points, which is not a thing that
+happens. I nearly submitted it.
 
-Worth stating plainly: the inflated number looked like a great result and was
-entirely an artifact of how the targets were built.
+The cause: I was pooling all the teacher predictions into one out-of-fold array
+and distilling every student against it. But the out-of-fold logit for a given
+row came from a teacher that had trained on other folds, including the rows I was
+about to validate on. So information about the held-out questions reached the
+student through the teacher's weights, even though no held-out row was ever in
+the student's training data.
 
-### 5. More training data moved the teacher but not the student
+Fix was to keep each fold teacher's predictions separately and give student f
+only the targets from teacher f, which never saw fold f's validation rows. The
+corrected score was 0.9375, four points lower. That number then matched the
+public leaderboard exactly on my first submission, which is what convinced me the
+harness was finally honest.
 
-72 examples is the real constraint, so I wrote 116 additional A-E questions
-covering the same four areas as the test set (transfer learning and PEFT,
-self-supervised learning, model compression, LLM systems).
+Before blaming the setup I checked for duplicate questions first: one near
+duplicate pair inside train, none between train and test, no reused option
+strings. It was the pipeline, not the data.
 
-Two things had to be handled carefully:
+### Writing extra training data
 
-- **Contamination.** My first draft included questions whose prompts restated
-  provided test questions almost verbatim. A synthetic question that repeats a
-  test prompt with an answer attached is hand-labelling the test set by another
-  route, which the rules prohibit. Every question above 0.45 token Jaccard against
-  any provided prompt was dropped, 65 in total. Maximum overlap in what remains is
-  0.444, which is just shared topic vocabulary.
-- **Option length.** In the provided data the correct option is the second-longest
-  of the five 58% of the time, well above the 20% chance rate, because the long
-  option is usually an over-qualified wrong one. Written from scratch my correct
-  answers were the longest 176 times out of 181, which teaches the opposite cue.
-  `tools/balance_aug.py` extends selected distractors with absolutist qualifiers
-  until the length profile matches the source: 21/59/20 percent for
-  longest/second-longest/shortest against the provided data's 18/58/18.
+72 examples is the real bottleneck, so I wrote 116 more A-E questions covering
+the same four areas as the test set: transfer learning and PEFT, self-supervised
+learning, model compression, and LLM systems.
 
-CV folds are built from the 72 provided questions only. The written questions
-join every fold's training set and never its validation set, so the resulting
-number stays comparable.
+Two things needed care.
 
-Result: teacher CV went from 0.9167 to 0.9421, a gain of about 1.8 questions. The
-student went from 0.9375 to 0.9421, which is one third of one question and inside
-the noise. The extra data helped the 435M teacher and did not transfer to the
-88.8M student.
+First, contamination. My first draft had questions whose prompts restated
+provided test questions almost word for word. That is hand-labelling the test set
+through the back door, which the rules prohibit, so I dropped everything scoring
+above 0.45 token Jaccard against any provided prompt. That removed 65 questions.
+The highest overlap left is 0.444, which is just topic vocabulary that any two
+questions on LoRA would share.
 
-### 6. Neither scoreboard can resolve differences this small
+Second, option length. In the provided data the correct answer is the
+second-longest of the five 58% of the time, against 20% by chance, because the
+longest option is usually an over-qualified wrong one. Writing from scratch I did
+the opposite without noticing: my correct answer was the longest in 176 of 181
+questions. Training on that would have taught the model a cue that is backwards
+for this test set. `tools/balance_aug.py` extends chosen distractors with
+absolutist qualifiers until the profile matches, 21/59/20 percent for
+longest/second-longest/shortest against the provided data's 18/58/18.
 
-MAP@3 credit comes in thirds, so on the 32-row public leaderboard the smallest
-non-zero difference between two submissions is `(1/3)/32 = 0.0104`. Every gap I
-dealt with was exactly that size: the difference between my two best models, and
-my margin over second place, were both one tick.
+CV folds are built from the 72 provided questions only. The written ones go into
+every fold's training set and never into validation, so the number stays
+comparable.
 
-The same model scored 0.9421 on CV (one tick better than the baseline) and
-0.92708 on the public leaderboard (one tick worse). Both measurements are correct
-and they disagree, because 32 and 72 questions are not enough to separate models
-this close. After this became clear I stopped tuning against the public score,
-since at 32 rows one lucky guess is worth three points of nothing.
+It helped the teacher and not the student. Teacher CV went from 0.9167 to 0.9421,
+worth about 1.8 questions. The student went from 0.9375 to 0.9421, which is one
+third of one question and inside the noise.
+
+### How small a difference you can actually measure
+
+MAP@3 credit comes in thirds, so on a 32 row public leaderboard the smallest
+possible non-zero gap between two submissions is (1/3)/32 = 0.0104.
+
+Nearly every difference I dealt with was exactly that size. The gap between my
+two best models was one tick. My margin over second place was one tick. One model
+scored a tick better than the baseline on CV and a tick worse on the public
+leaderboard, and both measurements were correct.
+
+Once that was clear I stopped tuning against the public score. With 32 questions
+one lucky guess moves you three points, and chasing it is how you talk yourself
+out of a model that was fine.
 
 ## Repository layout
 
 ```
-notebooks/01_train.py     training pipeline, source form
-notebooks/01_train.ipynb  same, split into cells for Kaggle
-notebooks/02_infer.py     inference, internet off
-notebooks/02_infer.ipynb  same, split into cells for Kaggle
-tools/to_ipynb.py         splits a .py on "# %%" markers into a notebook
+notebooks/01_train.py     training pipeline
+notebooks/01_train.ipynb  same thing, split into cells for Kaggle
+notebooks/02_infer.py     inference, runs with internet off
+notebooks/02_infer.ipynb  same, for Kaggle
+tools/to_ipynb.py         splits a .py on "# %%" into a notebook
 tools/build_aug.py        compiles the question banks into augment.csv
-tools/balance_aug.py      matches option-length profile to the provided data
-data/aug/qbank_*.txt      the 116 written questions, source form
+tools/balance_aug.py      matches option lengths to the provided data
+data/aug/qbank_*.txt      the 116 written questions
 data/aug/augment.csv      compiled, uploaded to Kaggle as a dataset
 ```
 
-The competition CSVs are not in this repository. They are distributed through the
-competition page and are not mine to redistribute.
+The competition CSVs are not here. They come from the competition page and are
+not mine to hand out.
 
-## Reproducing
+## Running it
 
-`01_train` runs on Kaggle with the competition attached plus the `augment.csv`
-dataset, GPU on, internet on for the checkpoint downloads. It takes about 72
-minutes on a T4 and writes `student_int8.pt`, the tokenizer and the model config.
+`01_train` needs the competition data and the `augment.csv` dataset attached, GPU
+on, internet on for the checkpoint downloads. About 72 minutes on a T4. It writes
+`student_int8.pt` plus the tokenizer and model config.
 
-`02_infer` attaches that output, runs with **internet off** as the rules require,
-and writes `submission.csv` along with the two lines the grading protocol
-expects:
+`02_infer` takes that output, runs with internet off as required, and writes
+`submission.csv` and the two grading lines:
 
 ```
 Model Size: 90.26
 Average Latency: 0.010404 seconds per sample
 ```
 
-Latency is measured after a three-batch GPU warmup, over the full 108 rows,
-padded to the true maximum length of 115 tokens rather than the 256 used in
-training.
+Latency is timed after a three batch warmup so the CUDA context and kernel
+autotuning are not counted, across all 108 rows, padded to the real maximum
+length of 115 tokens instead of the 256 used in training.
