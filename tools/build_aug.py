@@ -1,7 +1,7 @@
 """Parse the hand-written question banks into a single augmentation CSV."""
 import csv, glob, os, re, sys
 
-SRC = os.path.expanduser("~/Training/dl-compression/data/aug")
+SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "aug")
 OUT = os.path.join(SRC, "augment.csv")
 LETTERS = list("ABCDE")
 

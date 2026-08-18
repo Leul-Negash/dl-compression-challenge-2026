@@ -7,7 +7,7 @@ cue. This appends absolutist qualifiers to bring the profile back in line.
 """
 import csv, glob, os, re
 
-SRC = os.path.expanduser("~/Training/dl-compression/data/aug")
+SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "aug")
 LETTERS = list("ABCDE")
 
 CLAUSES = [
