@@ -1,4 +1,5 @@
 # %%
+# locate the trained artifact and the test data
 import os, glob, time
 import numpy as np, pandas as pd, torch, torch.nn as nn
 from transformers import AutoTokenizer, AutoModelForMultipleChoice, AutoConfig
@@ -14,6 +15,7 @@ MODEL_PATH = f"{ART}/student_int8.pt"
 print(ART, DATA)
 
 # %%
+# rebuild the student, then dequantize INT8 -> FP16 for the GPU
 blob = torch.load(MODEL_PATH, map_location="cpu", weights_only=False)
 remap = blob["remap"]
 
@@ -22,6 +24,7 @@ model = AutoModelForMultipleChoice.from_config(cfg)
 emb = model.deberta.embeddings.word_embeddings
 model.deberta.embeddings.word_embeddings = nn.Embedding(cfg.vocab_size, emb.embedding_dim)
 
+# int8 tensors get their row scale reapplied; everything else was stored as fp16
 state = {}
 for k, v in blob["q"].items():
     state[k] = (v.float() * blob["scales"][k].float()).half() if v.dtype == torch.int8 else v.half()
@@ -34,6 +37,7 @@ model = model.half().to(device).eval()
 tok = AutoTokenizer.from_pretrained(f"{ART}/tokenizer")
 
 # %%
+# tokenize once, pad to one length, remap ids into the trimmed vocabulary
 test_df = pd.read_csv(f"{DATA}/test.csv")
 
 encoded = [tok([str(r["prompt"])] * 5, [str(r[l]) for l in LETTERS],
@@ -51,7 +55,9 @@ ids, mask = torch.stack(ids), torch.stack(mask)
 print(f"{len(test_df)} questions, padded to {pad_to} tokens")
 
 # %%
+# timed inference, top-3 submission, and the two grading multipliers
 with torch.inference_mode():
+    # warm up the CUDA kernels so their one-off cost is not charged to the timed run
     for _ in range(3):
         model(input_ids=ids[:2].to(device), attention_mask=mask[:2].to(device))
     torch.cuda.synchronize()
@@ -70,6 +76,7 @@ pd.DataFrame({"id": test_df["id"],
               "prediction": [" ".join(LETTERS[j] for j in row) for row in top3]}
              ).to_csv("submission.csv", index=False)
 
+# both multipliers are min(1, limit/actual), so anything under the cap scores 1.000
 size_mb = os.path.getsize(MODEL_PATH) / 1e6
 latency = elapsed / len(test_df)
 print(f"Model Size: {size_mb:.2f}")

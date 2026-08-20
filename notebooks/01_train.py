@@ -1,4 +1,5 @@
 # %%
+# config, data, and the training pool
 import os, gc, glob, random
 import numpy as np, pandas as pd, torch
 import torch.nn as nn, torch.nn.functional as F
@@ -32,6 +33,7 @@ train_df["label"] = train_df["answer"].map({l: i for i, l in enumerate(LETTERS)}
 y_true = train_df["label"].values
 N = len(train_df)
 
+# provided rows come first, my written ones after; extra indexes the written block
 if AUG:
     aug_df = pd.read_csv(AUG[0])
     aug_df["label"] = aug_df["answer"].map({l: i for i, l in enumerate(LETTERS)})
@@ -44,6 +46,7 @@ print(DATA)
 print(f"{N} provided + {len(extra)} written = {len(pool_df)} training rows, {len(test_df)} test")
 
 # %%
+# dataset, metric, and the shared train/predict loops
 class MCQData(Dataset):
     def __init__(self, df, tok, labelled=True):
         self.df = df.reset_index(drop=True)
@@ -64,6 +67,7 @@ class MCQData(Dataset):
         return item
 
 
+# 1, 1/2 or 1/3 credit for the correct answer at rank 1, 2 or 3
 def map3(logits, labels):
     top = np.argsort(-logits, axis=1)[:, :3]
     total = 0.0
@@ -107,6 +111,7 @@ def fit(model, loader, epochs, lr, soft=None):
             with torch.amp.autocast('cuda'):
                 logits = model(**batch).logits
                 loss = F.cross_entropy(logits, y)
+                # distillation: blend the hard label with the teacher's softened logits
                 if soft is not None:
                     kd = F.kl_div(F.log_softmax(logits / KD_T, -1),
                                   F.softmax(soft[idx].to(device) / KD_T, -1),
@@ -121,6 +126,7 @@ def fit(model, loader, epochs, lr, soft=None):
     return model
 
 # %%
+# teacher: 5-fold CV, each fold predicting every row so synthetic rows also get targets
 t_tok = AutoTokenizer.from_pretrained(TEACHER)
 folds = list(StratifiedKFold(FOLDS, shuffle=True, random_state=SEED).split(train_df, y_true))
 
@@ -146,6 +152,7 @@ np.save(f"{OUT}/oof.npy", oof)
 np.save(f"{OUT}/soft_logits.npy", soft_logits)
 
 # %%
+# student setup: trim the vocabulary, then build a model that indexes the trimmed table
 s_tok = AutoTokenizer.from_pretrained(STUDENT)
 
 # the 128k embedding table is over half the model; keep only ids this dataset can produce
@@ -183,6 +190,7 @@ class RemappedData(MCQData):
 print(f"student {sum(p.numel() for p in build_student().parameters())/1e6:.1f}M params")
 
 # %%
+# student CV: the honest held-out score, measured before any compression
 # fold f's targets come from teacher f, which never trained on va_f
 s_oof = np.zeros((N, 5), dtype=np.float32)
 
@@ -207,6 +215,7 @@ for f, (tr, va) in enumerate(folds):
 print(f"student OOF MAP@3 = {map3(s_oof, y_true):.4f}")
 
 # %%
+# final student: refit on every row against the averaged teacher logits
 soft = torch.tensor(soft_logits)
 train_loader = DataLoader(RemappedData(pool_df, s_tok), batch_size=4, shuffle=True)
 eval_loader = DataLoader(RemappedData(train_df, s_tok), batch_size=8)
@@ -216,10 +225,12 @@ fit(student, train_loader, S_EPOCHS, 2e-5, soft=soft)
 print(f"student fit MAP@3 = {map3(*predict(student, eval_loader, with_labels=True)):.4f}")
 
 # %%
+# prune 25% of linear weights globally by magnitude, then recover the loss
 linears = [(m, "weight") for m in student.modules() if isinstance(m, nn.Linear)]
 prune.global_unstructured(linears, pruning_method=prune.L1Unstructured, amount=PRUNE_AMOUNT)
 
 fit(student, train_loader, RECOVER_EPOCHS, 8e-6, soft=soft)
+# bake the masks into the weights; before this the zeros are only a mask
 for m, name in linears:
     prune.remove(m, name)
 
@@ -231,6 +242,7 @@ print(f"sparsity: linear {100*lin_zeros/lin_total:.1f}%  whole model {100*zeros/
 print(f"student MAP@3 after pruning = {map3(*predict(student, eval_loader, with_labels=True)):.4f}")
 
 # %%
+# INT8 weight-only quantization with a scale per output row, then save the artifact
 student = student.cpu().eval()
 packed, scales = {}, {}
 for k, v in student.state_dict().items():
