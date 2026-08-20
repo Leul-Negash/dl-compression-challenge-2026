@@ -110,12 +110,13 @@ def fit(model, loader, epochs, lr, soft=None):
             opt.zero_grad(set_to_none=True)
             with torch.amp.autocast('cuda'):
                 logits = model(**batch).logits
+                # hard-label term: the provided answer letter
                 loss = F.cross_entropy(logits, y)
                 # distillation: blend the hard label with the teacher's softened logits
                 if soft is not None:
                     kd = F.kl_div(F.log_softmax(logits / KD_T, -1),
                                   F.softmax(soft[idx].to(device) / KD_T, -1),
-                                  reduction="batchmean") * KD_T ** 2
+                                  reduction="batchmean") * KD_T ** 2  # T^2 restores the gradient scale softening removed
                     loss = KD_ALPHA * kd + (1 - KD_ALPHA) * loss
             scaler.scale(loss).backward()
             scaler.unscale_(opt)
@@ -247,9 +248,10 @@ student = student.cpu().eval()
 packed, scales = {}, {}
 for k, v in student.state_dict().items():
     if v.dtype.is_floating_point and v.dim() == 2 and min(v.shape) > 1:
+        # one scale per output row, so a single large weight cannot flatten the whole tensor
         s = v.abs().amax(dim=1, keepdim=True) / 127.0
         s = torch.where(s == 0, torch.ones_like(s), s)
-        packed[k] = torch.round(v / s).clamp(-127, 127).to(torch.int8)
+        packed[k] = torch.round(v / s).clamp(-127, 127).to(torch.int8)  # symmetric, no zero point
         scales[k] = s.to(torch.float16)
     else:
         packed[k] = v.to(torch.float16)
